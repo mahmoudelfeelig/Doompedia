@@ -221,20 +221,21 @@ final class SQLiteStore {
         }
     }
 
-    func feedCandidates(language: String, limit: Int) throws -> [ArticleCard] {
+    func feedCandidates(language: String, offset: Int = 0, limit: Int) throws -> [ArticleCard] {
         try queryCards(
-            sql: selectCardColumns + """
+            sql: selectCardColumns + "\n" + """
             WHERE a.lang = ? AND a.is_disambiguation = 0
             ORDER BY a.quality_score DESC, a.page_id ASC
             LIMIT ?
+            OFFSET ?
             """,
-            bindings: [.text(language), .int64(Int64(limit))]
+            bindings: [.text(language), .int64(Int64(limit)), .int64(Int64(offset))]
         )
     }
 
     func searchExactTitle(language: String, normalizedQuery: String, limit: Int) throws -> [ArticleCard] {
         try queryCards(
-            sql: selectCardColumns + """
+            sql: selectCardColumns + "\n" + """
             WHERE a.lang = ? AND a.normalized_title = ?
             LIMIT ?
             """,
@@ -244,7 +245,7 @@ final class SQLiteStore {
 
     func searchTitlePrefix(language: String, normalizedPrefix: String, limit: Int) throws -> [ArticleCard] {
         try queryCards(
-            sql: selectCardColumns + """
+            sql: selectCardColumns + "\n" + """
             WHERE a.lang = ? AND a.normalized_title LIKE ?
             ORDER BY a.normalized_title ASC
             LIMIT ?
@@ -273,7 +274,7 @@ final class SQLiteStore {
 
     func typoCandidates(language: String, firstChar: String, minLen: Int, maxLen: Int, limit: Int) throws -> [ArticleCard] {
         try queryCards(
-            sql: selectCardColumns + """
+            sql: selectCardColumns + "\n" + """
             WHERE a.lang = ?
               AND substr(a.normalized_title, 1, 1) = ?
               AND length(a.normalized_title) BETWEEN ? AND ?

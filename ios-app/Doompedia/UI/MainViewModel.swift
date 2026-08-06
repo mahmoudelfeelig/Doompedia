@@ -28,6 +28,8 @@ final class MainViewModel: ObservableObject {
     @Published var folderPickerCard: ArticleCard?
     @Published var folderPickerSelection: Set<Int64> = []
     @Published var isLoading: Bool = true
+    @Published var isLoadingMoreFeed: Bool = false
+    @Published var feedHasMore: Bool = true
     @Published var isUpdatingPack: Bool = false
     @Published var updateProgress: PackUpdateProgress?
     @Published var message: String?
@@ -45,6 +47,9 @@ final class MainViewModel: ObservableObject {
 
     private let container: AppContainer
     private var thumbnailCache: [Int64: String?] = [:]
+    private let offlineFeedPageSize = 36
+    private let onlineFeedPageSize = 40
+    private var nextOfflineFeedOffset = 0
 
     init(container: AppContainer) {
         self.container = container
@@ -67,19 +72,44 @@ final class MainViewModel: ObservableObject {
     }
 
     func refreshFeed(manual: Bool = false) async {
-        isLoading = true
-        defer { isLoading = false }
+        await loadFeedChunk(reset: true, manual: manual)
+    }
+
+    func loadMoreFeed() async {
+        guard query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        guard !isLoading, !isLoadingMoreFeed, feedHasMore else { return }
+        await loadFeedChunk(reset: false, manual: false)
+    }
+
+    private func loadFeedChunk(reset: Bool, manual: Bool) async {
+        if reset {
+            isLoading = true
+            feedHasMore = true
+            nextOfflineFeedOffset = 0
+        } else {
+            isLoadingMoreFeed = true
+        }
+        defer {
+            isLoading = false
+            isLoadingMoreFeed = false
+        }
 
         effectiveFeedMode = resolvedFeedMode(requested: settings.feedMode)
         let previousTopID = feed.first?.card.pageId
+        let previousFeed = reset ? [] : feed
 
         do {
+            let ranked: [RankedCard]
+            var usedOnlineData = false
+
             if effectiveFeedMode == .online {
-                let remote = try await container.wikipediaAPIClient.fetchRandomSummaries(
+                let remote = (try? await container.wikipediaAPIClient.fetchRandomSummaries(
                     language: settings.language,
-                    count: 40
-                )
+                    count: onlineFeedPageSize
+                )) ?? []
+
                 if !remote.isEmpty {
+                    usedOnlineData = true
                     let rows = remote.map { article in
                         SeedRow(
                             page_id: article.pageID,
@@ -112,42 +142,63 @@ final class MainViewModel: ObservableObject {
                             bookmarked: false
                         )
                     }
-                    let ranked = try container.repository.rankCandidates(
+                    ranked = try container.repository.rankCandidates(
                         language: settings.language,
                         level: settings.personalizationLevel,
-                        candidates: candidates
-                    )
-                    feed = applyManualTopShuffleIfNeeded(
-                        ranked: ranked,
-                        previousTopID: previousTopID,
-                        manual: manual
+                        candidates: candidates,
+                        limit: onlineFeedPageSize
                     )
                 } else {
-                    let ranked = try container.repository.loadFeed(
-                        language: settings.language,
-                        level: settings.personalizationLevel
-                    )
-                    feed = applyManualTopShuffleIfNeeded(
-                        ranked: ranked,
-                        previousTopID: previousTopID,
-                        manual: manual
-                    )
+                    ranked = try loadOfflineFeedPage()
                 }
-                return
+            } else {
+                ranked = try loadOfflineFeedPage()
             }
 
-            let ranked = try container.repository.loadFeed(
-                language: settings.language,
-                level: settings.personalizationLevel
-            )
-            feed = applyManualTopShuffleIfNeeded(
-                ranked: ranked,
-                previousTopID: previousTopID,
-                manual: manual
-            )
+            let nextFeed: [RankedCard]
+            if reset {
+                nextFeed = applyManualTopShuffleIfNeeded(
+                    ranked: ranked,
+                    previousTopID: previousTopID,
+                    manual: manual
+                )
+            } else {
+                nextFeed = Array((previousFeed + ranked).suffix(1_200))
+            }
+
+            feed = nextFeed
+            feedHasMore = usedOnlineData || !ranked.isEmpty
+            if reset, ranked.isEmpty {
+                message = "No articles available. Try Live mode or download an offline pack."
+            }
         } catch {
+            feedHasMore = false
             message = "Failed to load feed: \(error.localizedDescription)"
         }
+    }
+
+    private func loadOfflineFeedPage() throws -> [RankedCard] {
+        var ranked = try container.repository.loadFeedPage(
+            language: settings.language,
+            level: settings.personalizationLevel,
+            offset: nextOfflineFeedOffset,
+            limit: offlineFeedPageSize
+        )
+
+        if ranked.isEmpty, nextOfflineFeedOffset > 0 {
+            nextOfflineFeedOffset = 0
+            ranked = try container.repository.loadFeedPage(
+                language: settings.language,
+                level: settings.personalizationLevel,
+                offset: 0,
+                limit: offlineFeedPageSize
+            )
+        }
+
+        if !ranked.isEmpty {
+            nextOfflineFeedOffset += offlineFeedPageSize
+        }
+        return ranked
     }
 
     func handleExploreReselected() {
@@ -576,7 +627,6 @@ final class MainViewModel: ObservableObject {
 
     func resolveThumbnailURL(for card: ArticleCard) async -> String? {
         if !settings.downloadPreviewImages { return nil }
-        if abs(card.pageId) % 10 != 0 { return nil }
         if !NetworkMonitor.shared.isOnline { return nil }
         if let cached = thumbnailCache[card.pageId] {
             return cached
@@ -631,7 +681,7 @@ private func buildPackCatalog(customPacksJSON: String) -> [PackOption] {
             id: "en-core-1m",
             title: "English Core 1M",
             subtitle: "General encyclopedia pack with biographies, science, geography, history, and culture.",
-            downloadSize: "~380 MB (gzip) / ~396 MB raw",
+            downloadSize: "~65 MB (gzip)",
             installSize: "~1.3 GB",
             manifestURL: "\(hostedBaseURL)/en-core-1m/v1/manifest.json",
             available: true,
@@ -648,7 +698,7 @@ private func buildPackCatalog(customPacksJSON: String) -> [PackOption] {
             installSize: "~20 MB",
             manifestURL: "\(hostedBaseURL)/en-science-250k/v1/manifest.json",
             available: true,
-            articleCount: 16_811,
+            articleCount: 16_950,
             shardCount: 1,
             includedTopics: ["Science", "Technology", "Health", "Environment"],
             removable: false
@@ -670,12 +720,12 @@ private func buildPackCatalog(customPacksJSON: String) -> [PackOption] {
             id: "en-all-summaries",
             title: "English All Summaries",
             subtitle: "Largest available EN pack with all extracted short summaries.",
-            downloadSize: "~384 MB (gzip)",
+            downloadSize: "~412 MB (gzip)",
             installSize: "~6-9 GB",
             manifestURL: "\(hostedBaseURL)/en-all-summaries/v1/manifest.json",
             available: true,
-            articleCount: 6_262_893,
-            shardCount: 157,
+            articleCount: 6_384_801,
+            shardCount: 160,
             includedTopics: ["All"],
             removable: false
         )

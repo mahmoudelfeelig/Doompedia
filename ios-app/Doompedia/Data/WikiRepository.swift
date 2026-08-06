@@ -31,6 +31,30 @@ final class WikiRepository {
         )
     }
 
+    func loadFeedPage(
+        language: String,
+        level: PersonalizationLevel,
+        offset: Int,
+        limit: Int
+    ) throws -> [RankedCard] {
+        let candidates = try store.feedCandidates(
+            language: language,
+            offset: offset,
+            limit: limit
+        )
+        guard !candidates.isEmpty else { return [] }
+
+        let affinities = try store.topicAffinities(language: language)
+        let recentTopics = try store.recentTopics(limit: config.guardrails.windowSize)
+        return ranker.rank(
+            candidates: candidates,
+            topicAffinity: affinities,
+            recentlySeenTopics: recentTopics,
+            level: level,
+            limit: limit
+        )
+    }
+
     func rankCandidates(
         language: String,
         level: PersonalizationLevel,

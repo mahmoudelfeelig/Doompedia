@@ -3,165 +3,37 @@ import UIKit
 
 struct SettingsView: View {
     @ObservedObject var viewModel: MainViewModel
-
     @State private var accentHexDraft = ""
     @State private var importDraft = ""
 
-    private let presets = [
-        "#0B6E5B",
-        "#1363DF",
-        "#C44536",
-        "#F59E0B",
-        "#7E22CE",
-        "#EC4899",
-    ]
+    private let presets = ["#0B624F", "#C85B44", "#B17D25", "#2C5F87", "#34453B"]
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section("Mode") {
-                    Picker("Feed mode", selection: Binding(
-                        get: { viewModel.settings.feedMode },
-                        set: { viewModel.setFeedMode($0) }
-                    )) {
-                        ForEach(FeedMode.allCases, id: \.self) { mode in
-                            Text(mode.rawValue).tag(mode)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-
-                    Text(viewModel.settings.feedMode == .offline
-                         ? "OFFLINE uses downloaded packs and local cache only."
-                         : "ONLINE fetches live Wikipedia summaries and caches them locally.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-
-                    if viewModel.effectiveFeedMode != viewModel.settings.feedMode {
-                        Text("No internet detected. Offline mode is active.")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-
-                Section("Personalization") {
-                    Picker("Level", selection: Binding(
-                        get: { viewModel.settings.personalizationLevel },
-                        set: { viewModel.setPersonalization($0) }
-                    )) {
-                        ForEach(PersonalizationLevel.allCases, id: \.self) { level in
-                            Text(level.rawValue).tag(level)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-
-                    Text(personalizationDescription(viewModel.settings.personalizationLevel))
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
-
-                Section("Appearance") {
-                    Picker("Theme", selection: Binding(
-                        get: { viewModel.settings.themeMode },
-                        set: { viewModel.setTheme($0) }
-                    )) {
-                        ForEach(ThemeMode.allCases, id: \.self) { mode in
-                            Text(mode.rawValue).tag(mode)
-                        }
-                    }
-
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 10) {
-                            ForEach(presets, id: \.self) { hex in
-                                Circle()
-                                    .fill(Color.fromHex(hex) ?? .green)
-                                    .frame(width: 24, height: 24)
-                                    .overlay(Circle().stroke(Color.primary.opacity(0.2), lineWidth: 1))
-                                    .onTapGesture {
-                                        accentHexDraft = hex
-                                        viewModel.setAccentHex(hex)
-                                    }
-                            }
-                        }
-                        .padding(.vertical, 4)
-                    }
-
-                    ColorPicker("Accent color", selection: Binding(
-                        get: { Color.fromHex(accentHexDraft) ?? .green },
-                        set: { value in
-                            if let hex = value.hexString {
-                                accentHexDraft = hex
-                                viewModel.setAccentHex(hex)
-                            }
-                        }
-                    ))
-
-                    TextField("Accent hex (#RRGGBB)", text: Binding(
-                        get: { accentHexDraft },
-                        set: { value in
-                            accentHexDraft = value
-                            viewModel.setAccentHex(value)
-                        }
-                    ))
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                }
-
-                Section("Accessibility") {
-                    HStack {
-                        Text("Font size")
-                        Spacer()
-                        Text("\(Int(viewModel.settings.fontScale * 100))%")
-                            .foregroundStyle(.secondary)
-                    }
-                    Slider(
-                        value: Binding(
-                            get: { viewModel.settings.fontScale },
-                            set: { viewModel.setFontScale($0) }
-                        ),
-                        in: 0.85 ... 1.35
+            ScrollView {
+                LazyVStack(spacing: 0) {
+                    DoompediaMasthead(eyebrow: "The pocket encyclopedia edition", status: nil)
+                    DoompediaScreenHeader(
+                        eyebrow: "Reading desk",
+                        title: "Settings",
+                        summary: "Tune the edition to your attention, accessibility needs, and connection."
                     )
 
-                    Toggle("High contrast mode", isOn: Binding(
-                        get: { viewModel.settings.highContrast },
-                        set: { viewModel.setHighContrast($0) }
-                    ))
-                    Toggle("Reduce motion", isOn: Binding(
-                        get: { viewModel.settings.reduceMotion },
-                        set: { viewModel.setReduceMotion($0) }
-                    ))
-                }
-
-                Section("Downloads") {
-                    Toggle("Wi-Fi only downloads", isOn: Binding(
-                        get: { viewModel.settings.wifiOnlyDownloads },
-                        set: { viewModel.setWifiOnly($0) }
-                    ))
-                }
-
-                Section("Settings backup") {
-                    Button("Export settings (copy)") {
-                        viewModel.exportSettingsToClipboard()
+                    VStack(alignment: .leading, spacing: 28) {
+                        readingSection
+                        personalizationSection
+                        appearanceSection
+                        accessibilitySection
+                        downloadsSection
+                        backupSection
+                        attributionSection
                     }
-
-                    TextEditor(text: $importDraft)
-                        .frame(minHeight: 120)
-                        .font(.system(.footnote, design: .monospaced))
-
-                    Button("Import settings") {
-                        Task { await viewModel.importSettingsJSON(importDraft) }
-                    }
-                    .disabled(importDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                }
-
-                Section("Attribution") {
-                    Text("This app uses Wikipedia content under CC BY-SA 4.0.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                    Link("Open CC BY-SA 4.0", destination: URL(string: "https://creativecommons.org/licenses/by-sa/4.0/")!)
-                    Link("Open Wikipedia", destination: URL(string: "https://www.wikipedia.org/")!)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 32)
                 }
             }
-            .navigationTitle("Settings")
+            .background(DoompediaPalette.page)
+            .toolbar(.hidden, for: .navigationBar)
             .onAppear {
                 if accentHexDraft.isEmpty {
                     accentHexDraft = viewModel.settings.accentHex
@@ -174,18 +46,279 @@ struct SettingsView: View {
             }
         }
     }
+
+    private var readingSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            EditorialSectionHeader(title: "Reading mode")
+
+            Picker("Feed mode", selection: Binding(
+                get: { viewModel.settings.feedMode },
+                set: { viewModel.setFeedMode($0) }
+            )) {
+                Text("Offline").tag(FeedMode.offline)
+                Text("Online").tag(FeedMode.online)
+            }
+            .pickerStyle(.segmented)
+
+            Label(
+                readingModeDescription,
+                systemImage: viewModel.effectiveFeedMode == .offline ? "internaldrive" : "network"
+            )
+            .font(.footnote)
+            .foregroundStyle(DoompediaPalette.muted)
+
+            if viewModel.effectiveFeedMode != viewModel.settings.feedMode {
+                Label("No connection detected. The downloaded edition is active.", systemImage: "wifi.slash")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(DoompediaPalette.coral)
+            }
+        }
+    }
+
+    private var personalizationSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            EditorialSectionHeader(title: "Personalization", caption: "You control the signal")
+
+            Picker("Personalization level", selection: Binding(
+                get: { viewModel.settings.personalizationLevel },
+                set: { viewModel.setPersonalization($0) }
+            )) {
+                Text("Off").tag(PersonalizationLevel.off)
+                Text("Low").tag(PersonalizationLevel.low)
+                Text("Medium").tag(PersonalizationLevel.medium)
+                Text("High").tag(PersonalizationLevel.high)
+            }
+            .pickerStyle(.segmented)
+
+            Text(personalizationDescription(viewModel.settings.personalizationLevel))
+                .font(.footnote)
+                .foregroundStyle(DoompediaPalette.muted)
+        }
+    }
+
+    private var appearanceSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            EditorialSectionHeader(title: "Appearance")
+
+            Picker("Theme", selection: Binding(
+                get: { viewModel.settings.themeMode },
+                set: { viewModel.setTheme($0) }
+            )) {
+                Text("System").tag(ThemeMode.system)
+                Text("Light").tag(ThemeMode.light)
+                Text("Dark").tag(ThemeMode.dark)
+            }
+            .pickerStyle(.segmented)
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("ACCENT")
+                    .font(.caption.weight(.bold))
+                    .tracking(1.1)
+                    .foregroundStyle(DoompediaPalette.subtle)
+
+                HStack(spacing: 14) {
+                    ForEach(presets, id: \.self) { hex in
+                        Button {
+                            accentHexDraft = hex
+                            viewModel.setAccentHex(hex)
+                        } label: {
+                            Circle()
+                                .fill(Color.fromHex(hex) ?? DoompediaPalette.green)
+                                .frame(width: 30, height: 30)
+                                .overlay(
+                                    Circle().stroke(
+                                        accentHexDraft.caseInsensitiveCompare(hex) == .orderedSame
+                                            ? DoompediaPalette.ink
+                                            : DoompediaPalette.line,
+                                        lineWidth: accentHexDraft.caseInsensitiveCompare(hex) == .orderedSame ? 3 : 1
+                                    )
+                                )
+                                .frame(width: 44, height: 44)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Use accent color \(hex)")
+                    }
+
+                    ColorPicker("Custom accent", selection: Binding(
+                        get: { Color.fromHex(accentHexDraft) ?? DoompediaPalette.green },
+                        set: { value in
+                            if let hex = value.hexString {
+                                accentHexDraft = hex
+                                viewModel.setAccentHex(hex)
+                            }
+                        }
+                    ))
+                    .labelsHidden()
+                    .frame(width: 44, height: 44)
+                    .accessibilityLabel("Choose custom accent color")
+                }
+            }
+
+            TextField("Accent hex (#RRGGBB)", text: Binding(
+                get: { accentHexDraft },
+                set: { value in
+                    accentHexDraft = value
+                    viewModel.setAccentHex(value)
+                }
+            ))
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
+            .font(.system(.footnote, design: .monospaced))
+            .padding(.horizontal, 12)
+            .frame(minHeight: 44)
+            .background(DoompediaPalette.surface)
+            .overlay(
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .stroke(DoompediaPalette.line, lineWidth: 1)
+            )
+        }
+    }
+
+    private var accessibilitySection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            EditorialSectionHeader(title: "Accessibility")
+
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Text size")
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(DoompediaPalette.ink)
+                    Text("Scales every article and control")
+                        .font(.caption)
+                        .foregroundStyle(DoompediaPalette.muted)
+                }
+                Spacer()
+                Text("\(Int(viewModel.settings.fontScale * 100))%")
+                    .font(.subheadline.monospacedDigit().weight(.semibold))
+                    .foregroundStyle(DoompediaPalette.green)
+            }
+
+            Slider(
+                value: Binding(
+                    get: { viewModel.settings.fontScale },
+                    set: { viewModel.setFontScale($0) }
+                ),
+                in: 0.85 ... 1.35
+            )
+            .tint(DoompediaPalette.green)
+            .accessibilityLabel("Text size")
+
+            settingsToggle(
+                title: "High contrast",
+                detail: "Adds weight and clarity to interface text.",
+                isOn: Binding(
+                    get: { viewModel.settings.highContrast },
+                    set: { viewModel.setHighContrast($0) }
+                )
+            )
+
+            settingsToggle(
+                title: "Reduce motion",
+                detail: "Removes animated scrolling and transitions.",
+                isOn: Binding(
+                    get: { viewModel.settings.reduceMotion },
+                    set: { viewModel.setReduceMotion($0) }
+                )
+            )
+        }
+    }
+
+    private var downloadsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            EditorialSectionHeader(title: "Downloads")
+            settingsToggle(
+                title: "Wi-Fi only",
+                detail: "Avoid downloading large offline editions over cellular data.",
+                isOn: Binding(
+                    get: { viewModel.settings.wifiOnlyDownloads },
+                    set: { viewModel.setWifiOnly($0) }
+                )
+            )
+        }
+    }
+
+    private var backupSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            EditorialSectionHeader(title: "Backup")
+
+            DisclosureGroup {
+                VStack(alignment: .leading, spacing: 12) {
+                    Button("Copy settings as JSON") {
+                        viewModel.exportSettingsToClipboard()
+                    }
+                    .font(.subheadline.weight(.semibold))
+
+                    TextEditor(text: $importDraft)
+                        .frame(minHeight: 110)
+                        .font(.system(.footnote, design: .monospaced))
+                        .padding(6)
+                        .background(DoompediaPalette.surface)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                .stroke(DoompediaPalette.line, lineWidth: 1)
+                        )
+
+                    Button("Import settings") {
+                        Task { await viewModel.importSettingsJSON(importDraft) }
+                    }
+                    .font(.subheadline.weight(.semibold))
+                    .disabled(importDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+                .padding(.top, 10)
+            } label: {
+                Label("Transfer settings", systemImage: "curlybraces.square")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(DoompediaPalette.ink)
+                    .frame(minHeight: 44)
+            }
+        }
+    }
+
+    private var attributionSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            EditorialSectionHeader(title: "Sources & attribution")
+            Text("Doompedia uses Wikipedia content under the Creative Commons Attribution-ShareAlike 4.0 license.")
+                .font(.footnote)
+                .foregroundStyle(DoompediaPalette.muted)
+            Link("Read the CC BY-SA 4.0 license", destination: URL(string: "https://creativecommons.org/licenses/by-sa/4.0/")!)
+                .font(.subheadline.weight(.semibold))
+            Link("Visit Wikipedia", destination: URL(string: "https://www.wikipedia.org/")!)
+                .font(.subheadline.weight(.semibold))
+        }
+    }
+
+    private var readingModeDescription: String {
+        viewModel.settings.feedMode == .offline
+            ? "The feed uses downloaded packs and the local cache only."
+            : "The feed fetches live Wikipedia summaries and keeps a local cache."
+    }
+
+    private func settingsToggle(title: String, detail: String, isOn: Binding<Bool>) -> some View {
+        Toggle(isOn: isOn) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(DoompediaPalette.ink)
+                Text(detail)
+                    .font(.caption)
+                    .foregroundStyle(DoompediaPalette.muted)
+            }
+        }
+        .tint(DoompediaPalette.green)
+        .padding(.vertical, 3)
+    }
 }
 
 private func personalizationDescription(_ level: PersonalizationLevel) -> String {
     switch level {
     case .off:
-        return "OFF: no behavior-based tuning. Feed remains mostly neutral."
+        return "No behavior-based tuning. The edition stays broadly neutral."
     case .low:
-        return "LOW: light personalization with strong diversity guardrails."
+        return "A light signal with strong variety and exploration guardrails."
     case .medium:
-        return "MEDIUM: balanced personalization and exploration."
+        return "A balanced mix of your interests and unfamiliar subjects."
     case .high:
-        return "HIGH: stronger adaptation with anti-bubble constraints."
+        return "Stronger adaptation while still keeping anti-bubble constraints."
     }
 }
 
@@ -230,4 +363,8 @@ private extension Color {
             Int(blue * 255.0)
         )
     }
+}
+
+#Preview("Settings · Reading Desk") {
+    SettingsView(viewModel: MainViewModel.make())
 }

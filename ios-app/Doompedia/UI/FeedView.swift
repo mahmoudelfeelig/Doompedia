@@ -1,9 +1,9 @@
 import SwiftUI
 
 private enum FeedSortOption: String, CaseIterable {
-    case recommended = "Recommended"
-    case titleAsc = "A-Z"
-    case titleDesc = "Z-A"
+    case recommended = "For you"
+    case titleAsc = "A–Z"
+    case titleDesc = "Z–A"
 }
 
 struct FeedView: View {
@@ -13,10 +13,9 @@ struct FeedView: View {
     @State private var whyMessage = ""
     @State private var showWhyAlert = false
     @State private var selectedSort: FeedSortOption = .recommended
-    @State private var selectedFilter: String = "All"
+    @State private var selectedFilter = "All"
     @State private var didInitialRefresh = false
     @State private var isAtTop = true
-    @State private var listResetToken = 0
 
     private var items: [RankedCard] {
         if viewModel.query.isEmpty {
@@ -28,19 +27,15 @@ struct FeedView: View {
     }
 
     private var availableFilters: [String] {
-        Array(Set(items.flatMap { buildTags(for: $0.card) }))
-            .sorted()
-            .prefix(14)
-            .map { $0 }
+        Array(Set(items.map { editorialTopic(for: $0.card) })).sorted()
     }
 
     private var visibleItems: [RankedCard] {
         var filtered = items
         if selectedFilter != "All" {
-            filtered = filtered.filter { ranked in
-                buildTags(for: ranked.card).contains(where: { $0.caseInsensitiveCompare(selectedFilter) == .orderedSame })
-            }
+            filtered = filtered.filter { editorialTopic(for: $0.card) == selectedFilter }
         }
+
         switch selectedSort {
         case .recommended:
             return filtered
@@ -53,160 +48,41 @@ struct FeedView: View {
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 10) {
-                TextField("Search title", text: Binding(
-                    get: { viewModel.query },
-                    set: { viewModel.updateQuery($0) }
-                ))
-                .textFieldStyle(.roundedBorder)
-                .padding(.horizontal, 16)
-                .accessibilityLabel("Search by title")
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
+                        DoompediaMasthead(
+                            eyebrow: "The pocket encyclopedia edition",
+                            status: viewModel.effectiveFeedMode == .offline ? "Offline" : "Live"
+                        )
+                        .id("feed-top")
+                        .onAppear { isAtTop = true }
+                        .onDisappear { isAtTop = false }
 
-                HStack(spacing: 12) {
-                    Menu {
-                        ForEach(FeedSortOption.allCases, id: \.self) { option in
-                            Button(option.rawValue) { selectedSort = option }
-                        }
-                    } label: {
-                        Label("Sort: \(selectedSort.rawValue)", systemImage: "line.3.horizontal.decrease.circle")
-                    }
-
-                    Menu {
-                        Button("All") { selectedFilter = "All" }
-                        ForEach(availableFilters, id: \.self) { filter in
-                            Button(filter) { selectedFilter = filter }
-                        }
-                    } label: {
-                        Label("Filter: \(selectedFilter)", systemImage: "tag")
-                    }
-
-                    Spacer()
-                }
-                .font(.subheadline)
-                .padding(.horizontal, 16)
-
-                if viewModel.isLoading {
-                    ProgressView()
-                        .padding(.top, 8)
-                }
-
-                List(visibleItems) { ranked in
-                    VStack(alignment: .leading, spacing: 10) {
-                        if viewModel.settings.downloadPreviewImages, shouldShowImage(for: ranked.card) {
-                            RemoteArticleImage(
-                                card: ranked.card,
-                                viewModel: viewModel
-                            )
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 180)
-                            .clipShape(RoundedRectangle(cornerRadius: 10))
-                        }
-
-                        HStack(alignment: .top, spacing: 8) {
-                            Text(ranked.card.title)
-                                .font(.headline)
-                                .lineLimit(3)
-                            Spacer(minLength: 8)
-                            Button {
-                                whyMessage = """
-                                This card is shown using your personalization level, diversity guardrails, and controlled exploration.
-
-                                \(ranked.why)
-                                """
-                                showWhyAlert = true
-                            } label: {
-                                Image(systemName: "info.circle")
-                                    .font(.headline)
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel("Why this is shown")
-                        }
-
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 6) {
-                                ForEach(buildTags(for: ranked.card), id: \.self) { tag in
-                                    Text(tag)
-                                        .font(.caption2.weight(.semibold))
-                                        .foregroundStyle(.secondary)
-                                        .padding(.horizontal, 8)
-                                        .padding(.vertical, 4)
-                                        .background(Color.secondary.opacity(0.12))
-                                        .clipShape(Capsule())
-                                }
-                            }
-                        }
-
-                        Text(ranked.card.summary)
-                            .font(.subheadline)
-                            .lineLimit(8)
-
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 8) {
-                                Button {
-                                    Task { await viewModel.showFolderPicker(for: ranked.card) }
-                                } label: {
-                                    Image(systemName: ranked.card.bookmarked ? "bookmark.fill" : "bookmark")
-                                }
-                                .buttonStyle(.bordered)
-                                .labelStyle(.iconOnly)
-                                .accessibilityLabel(ranked.card.bookmarked ? "Saved to folders" : "Save to folders")
-
-                                Button {
-                                    Task { await viewModel.moreLike(ranked.card) }
-                                } label: {
-                                    Image(systemName: "hand.thumbsup")
-                                }
-                                .buttonStyle(.bordered)
-                                .labelStyle(.iconOnly)
-                                .accessibilityLabel("Like this type of article")
-
-                                Button {
-                                    Task { await viewModel.lessLike(ranked.card) }
-                                } label: {
-                                    Image(systemName: "hand.thumbsdown")
-                                }
-                                .buttonStyle(.bordered)
-                                .labelStyle(.iconOnly)
-                                .accessibilityLabel("Dislike this type of article")
-                            }
-                        }
-                    }
-                    .padding(.vertical, 6)
-                    .contentShape(Rectangle())
-                    .onAppear {
-                        if ranked.id == visibleItems.first?.id {
-                            isAtTop = true
-                        }
-                    }
-                    .onDisappear {
-                        if ranked.id == visibleItems.first?.id {
-                            isAtTop = false
-                        }
-                    }
-                    .onTapGesture {
-                        Task {
-                            let shouldOpen = await viewModel.openCard(ranked.card)
-                            if shouldOpen, let url = URL(string: ranked.card.wikiURL) {
-                                openURL(url)
-                            }
+                        Section {
+                            feedContent
+                        } header: {
+                            feedControls
                         }
                     }
                 }
-                .id(listResetToken)
-                .listStyle(.plain)
+                .background(DoompediaPalette.page)
                 .refreshable {
                     await viewModel.refreshFeed(manual: true)
                 }
-            }
-            .navigationTitle("Doompedia")
-            .onChange(of: viewModel.exploreReselectToken) { _, _ in
-                if isAtTop {
-                    Task { await viewModel.refreshFeed(manual: true) }
-                } else {
-                    listResetToken += 1
-                    isAtTop = true
+                .onChange(of: viewModel.exploreReselectToken) { _, _ in
+                    if isAtTop {
+                        Task { await viewModel.refreshFeed(manual: true) }
+                    } else if viewModel.settings.reduceMotion {
+                        proxy.scrollTo("feed-top", anchor: .top)
+                    } else {
+                        withAnimation(.easeOut(duration: 0.28)) {
+                            proxy.scrollTo("feed-top", anchor: .top)
+                        }
+                    }
                 }
             }
+            .toolbar(.hidden, for: .navigationBar)
             .onAppear {
                 guard !didInitialRefresh else { return }
                 didInitialRefresh = true
@@ -221,6 +97,289 @@ struct FeedView: View {
             }
         }
     }
+
+    private var feedControls: some View {
+        VStack(spacing: 12) {
+            HStack(spacing: 10) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundStyle(DoompediaPalette.subtle)
+
+                TextField("Search articles", text: Binding(
+                    get: { viewModel.query },
+                    set: { viewModel.updateQuery($0) }
+                ))
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .accessibilityLabel("Search articles by title")
+
+                if !viewModel.query.isEmpty {
+                    Button {
+                        viewModel.updateQuery("")
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(DoompediaPalette.subtle)
+                            .frame(width: 32, height: 32)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Clear search")
+                }
+            }
+            .padding(.leading, 14)
+            .padding(.trailing, 7)
+            .frame(minHeight: 46)
+            .background(DoompediaPalette.surface)
+            .overlay(
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .stroke(DoompediaPalette.line, lineWidth: 1)
+            )
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    topicButton(title: "For you", filter: "All")
+                    ForEach(availableFilters, id: \.self) { filter in
+                        topicButton(title: filter, filter: filter)
+                    }
+                }
+            }
+
+            HStack {
+                Text(viewModel.query.isEmpty ? "THE ENDLESS EDITION" : "SEARCH RESULTS")
+                    .font(.caption.weight(.bold))
+                    .tracking(1.25)
+                    .foregroundStyle(DoompediaPalette.coral)
+
+                Spacer()
+
+                Text("\(visibleItems.count) articles")
+                    .font(.caption)
+                    .foregroundStyle(DoompediaPalette.muted)
+
+                Menu {
+                    ForEach(FeedSortOption.allCases, id: \.self) { option in
+                        Button(option.rawValue) { selectedSort = option }
+                    }
+                } label: {
+                    Label(selectedSort.rawValue, systemImage: "arrow.up.arrow.down")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(DoompediaPalette.ink)
+                        .frame(minHeight: 32)
+                }
+            }
+
+            Rectangle()
+                .fill(DoompediaPalette.line)
+                .frame(height: 1)
+        }
+        .padding(.horizontal, 14)
+        .padding(.top, 10)
+        .padding(.bottom, 8)
+        .background(DoompediaPalette.page)
+    }
+
+    @ViewBuilder
+    private var feedContent: some View {
+        if viewModel.isLoading, visibleItems.isEmpty {
+            VStack(spacing: 12) {
+                ProgressView()
+                    .tint(DoompediaPalette.green)
+                Text("Preparing your edition…")
+                    .font(.subheadline)
+                    .foregroundStyle(DoompediaPalette.muted)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 70)
+        } else if visibleItems.isEmpty {
+            EditorialEmptyState(
+                systemImage: "text.magnifyingglass",
+                title: "No articles found",
+                message: "Try another title or return to the full edition."
+            )
+            .padding(16)
+        } else {
+            ForEach(Array(visibleItems.enumerated()), id: \.offset) { index, ranked in
+                EditorialArticleView(
+                    ranked: ranked,
+                    editionNumber: index + 1,
+                    viewModel: viewModel,
+                    onOpen: { open(ranked.card) },
+                    onWhy: {
+                        whyMessage = """
+                        This article is placed using your personalization level, diversity guardrails, and controlled exploration.
+
+                        \(ranked.why)
+                        """
+                        showWhyAlert = true
+                    }
+                )
+                .onAppear {
+                    if index >= visibleItems.count - 6 {
+                        Task { await viewModel.loadMoreFeed() }
+                    }
+                }
+            }
+
+            if viewModel.isLoadingMoreFeed {
+                HStack(spacing: 10) {
+                    ProgressView()
+                    Text("Printing the next page…")
+                        .font(.subheadline)
+                        .foregroundStyle(DoompediaPalette.muted)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 24)
+            }
+        }
+    }
+
+    private func topicButton(title: String, filter: String) -> some View {
+        let isSelected = selectedFilter == filter
+        return Button {
+            selectedFilter = filter
+        } label: {
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(isSelected ? DoompediaPalette.surface : DoompediaPalette.muted)
+                .padding(.horizontal, 13)
+                .frame(minHeight: 36)
+                .background(isSelected ? DoompediaPalette.green : DoompediaPalette.surface)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .stroke(isSelected ? DoompediaPalette.green : DoompediaPalette.line, lineWidth: 1)
+                )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func open(_ card: ArticleCard) {
+        Task {
+            let shouldOpen = await viewModel.openCard(card)
+            if shouldOpen, let url = URL(string: card.wikiURL) {
+                openURL(url)
+            }
+        }
+    }
+}
+
+private struct EditorialArticleView: View {
+    let ranked: RankedCard
+    let editionNumber: Int
+    @ObservedObject var viewModel: MainViewModel
+    let onOpen: () -> Void
+    let onWhy: () -> Void
+
+    private var card: ArticleCard { ranked.card }
+    private var topic: String { editorialTopic(for: card) }
+    private var provenance: String {
+        card.updatedAt.hasPrefix("1970-") ? "AVAILABLE OFFLINE" : "LIVE CACHE"
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            ArticleMedia(card: card, viewModel: viewModel)
+                .overlay(alignment: .bottomTrailing) {
+                    Text(topic.uppercased())
+                        .font(.caption2.weight(.bold))
+                        .tracking(0.7)
+                        .foregroundStyle(Color(red: 0.09, green: 0.19, blue: 0.15))
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 6)
+                        .background(Color.white.opacity(0.94))
+                        .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+                        .padding(12)
+                }
+
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    Text("ARTICLE \(String(format: "%02d", editionNumber))")
+                    Spacer()
+                    Text(provenance)
+                }
+                .font(.caption2.weight(.bold))
+                .tracking(1.0)
+                .foregroundStyle(DoompediaPalette.green)
+
+                HStack(alignment: .top, spacing: 12) {
+                    Rectangle()
+                        .fill(DoompediaPalette.coral)
+                        .frame(width: 3)
+
+                    Text(card.title)
+                        .font(.system(size: 31, weight: .bold, design: .serif))
+                        .foregroundStyle(DoompediaPalette.ink)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Text(card.summary)
+                    .font(.system(.body, design: .default))
+                    .foregroundStyle(DoompediaPalette.muted)
+                    .lineSpacing(4)
+                    .lineLimit(5)
+
+                Button(action: onOpen) {
+                    HStack(spacing: 7) {
+                        Text("READ ON WIKIPEDIA")
+                        Image(systemName: "arrow.right")
+                    }
+                    .font(.caption.weight(.bold))
+                    .tracking(0.8)
+                    .foregroundStyle(DoompediaPalette.green)
+                    .frame(minHeight: 44)
+                }
+                .buttonStyle(.plain)
+
+                HStack(spacing: 10) {
+                    EditorialIconButton(
+                        systemImage: card.bookmarked ? "bookmark.fill" : "bookmark",
+                        label: card.bookmarked ? "Saved to folders" : "Save to folders",
+                        isActive: card.bookmarked
+                    ) {
+                        Task { await viewModel.showFolderPicker(for: card) }
+                    }
+
+                    EditorialIconButton(
+                        systemImage: "hand.thumbsup",
+                        label: "Show more articles like this"
+                    ) {
+                        Task { await viewModel.moreLike(card) }
+                    }
+
+                    EditorialIconButton(
+                        systemImage: "hand.thumbsdown",
+                        label: "Show fewer articles like this"
+                    ) {
+                        Task { await viewModel.lessLike(card) }
+                    }
+
+                    EditorialIconButton(
+                        systemImage: "info.circle",
+                        label: "Why this article is shown",
+                        action: onWhy
+                    )
+
+                    Spacer()
+
+                    Text(topic.uppercased())
+                        .font(.caption2.weight(.bold))
+                        .tracking(0.8)
+                        .foregroundStyle(DoompediaPalette.subtle)
+                        .lineLimit(1)
+                }
+            }
+            .padding(16)
+        }
+        .background(DoompediaPalette.surface)
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(DoompediaPalette.line)
+                .frame(height: 10)
+                .overlay(alignment: .top) {
+                    Rectangle()
+                        .fill(DoompediaPalette.line)
+                        .frame(height: 1)
+                }
+        }
+        .accessibilityElement(children: .contain)
+    }
 }
 
 struct FolderPickerSheet: View {
@@ -233,82 +392,112 @@ struct FolderPickerSheet: View {
                 Button {
                     viewModel.toggleFolderInPicker(folder.folderId)
                 } label: {
-                    HStack {
-                        Text("\(folder.name) (\(folder.articleCount))")
+                    HStack(spacing: 12) {
+                        Image(systemName: "folder")
+                            .foregroundStyle(DoompediaPalette.green)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(folder.name)
+                                .foregroundStyle(DoompediaPalette.ink)
+                            Text("\(folder.articleCount) articles")
+                                .font(.caption)
+                                .foregroundStyle(DoompediaPalette.muted)
+                        }
                         Spacer()
                         if viewModel.folderPickerSelection.contains(folder.folderId) {
                             Image(systemName: "checkmark.circle.fill")
-                                .foregroundStyle(.green)
+                                .foregroundStyle(DoompediaPalette.green)
                         }
                     }
+                    .frame(minHeight: 48)
                 }
                 .buttonStyle(.plain)
+                .listRowBackground(DoompediaPalette.surface)
             }
-            .navigationTitle("Save to folders")
+            .scrollContentBackground(.hidden)
+            .background(DoompediaPalette.page)
+            .navigationTitle("Save \(card.title)")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button("Cancel") {
-                        viewModel.dismissFolderPicker()
-                    }
+                    Button("Cancel") { viewModel.dismissFolderPicker() }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Apply") {
                         Task { await viewModel.applyFolderPicker() }
                     }
+                    .fontWeight(.semibold)
                 }
             }
         }
     }
 }
 
-private func buildTags(for card: ArticleCard) -> [String] {
-    var tags = CardKeywords.displayTags(
-        title: card.title,
-        summary: card.summary,
-        topicKey: card.topicKey,
-        bookmarked: card.bookmarked,
-        maxTags: 6
-    )
-    if card.updatedAt.hasPrefix("1970-") {
-        tags.append("Offline Pack")
-    } else {
-        tags.append("Live Cache")
-    }
-    return Array(tags.prefix(6))
-}
-
-private func shouldShowImage(for card: ArticleCard) -> Bool {
-    return abs(card.pageId) % 10 == 0
-}
-
-private struct RemoteArticleImage: View {
+private struct ArticleMedia: View {
     let card: ArticleCard
     @ObservedObject var viewModel: MainViewModel
     @State private var imageURL: String?
+    @State private var didResolve = false
 
     var body: some View {
-        Group {
+        ZStack {
+            DoompediaPalette.greenSoft
+
             if let imageURL, let url = URL(string: imageURL) {
                 AsyncImage(url: url) { phase in
                     switch phase {
                     case .empty:
-                        ProgressView()
+                        brandedPlaceholder(showProgress: true)
                     case .success(let image):
                         image
                             .resizable()
                             .scaledToFill()
                     case .failure:
-                        EmptyView()
+                        brandedPlaceholder(showProgress: false)
                     @unknown default:
-                        EmptyView()
+                        brandedPlaceholder(showProgress: false)
                     }
                 }
             } else {
-                EmptyView()
+                brandedPlaceholder(showProgress: viewModel.settings.downloadPreviewImages && !didResolve)
             }
         }
-        .task(id: card.pageId) {
+        .aspectRatio(4 / 5, contentMode: .fit)
+        .frame(maxWidth: .infinity)
+        .clipped()
+        .contentShape(Rectangle())
+        .task(id: "\(card.pageId)-\(viewModel.settings.downloadPreviewImages)") {
+            didResolve = false
             imageURL = await viewModel.resolveThumbnailURL(for: card)
+            didResolve = true
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Preview image for \(card.title)")
+    }
+
+    private func brandedPlaceholder(showProgress: Bool) -> some View {
+        VStack(spacing: 18) {
+            Image("elephant-logo")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 116, height: 116)
+                .opacity(0.72)
+            if showProgress {
+                ProgressView()
+                    .tint(DoompediaPalette.green)
+            } else {
+                Text(editorialTopic(for: card).uppercased())
+                    .font(.caption.weight(.bold))
+                    .tracking(1.6)
+                    .foregroundStyle(DoompediaPalette.greenStrong)
+            }
         }
     }
+}
+
+private func editorialTopic(for card: ArticleCard) -> String {
+    CardKeywords.prettyTopic(card.topicKey)
+}
+
+#Preview("Explore · Doomscroll Edition") {
+    FeedView(viewModel: MainViewModel.make())
 }
