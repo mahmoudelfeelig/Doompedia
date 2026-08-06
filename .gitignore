@@ -6,6 +6,8 @@ local.properties
 # iOS
 DerivedData/
 *.xcworkspace
+ios-app/*.xcodeproj/
+**/xcuserdata/
 
 # Python
 __pycache__/
