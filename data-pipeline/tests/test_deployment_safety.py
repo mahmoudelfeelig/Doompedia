@@ -25,12 +25,23 @@ def test_code_release_build_context_cannot_include_the_content_tree() -> None:
 
 def test_code_release_image_cannot_bake_the_authoritative_content_tree() -> None:
     dockerfile = (ROOT / "deploy" / "Dockerfile").read_text(encoding="utf-8")
+    instructions = [
+        line.strip()
+        for line in dockerfile.splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    ]
     copy_or_add = [
         line.strip()
         for line in dockerfile.splitlines()
         if line.strip().upper().startswith(("COPY ", "ADD "))
     ]
+    assert instructions == [
+        "FROM caddy:2-alpine@sha256:"
+        "5f5c8640aae01df9654968d946d8f1a56c497f1dd5c5cda4cf95ab7c14d58648",
+        "COPY deploy/Caddyfile /etc/caddy/Caddyfile",
+    ]
     assert copy_or_add == ["COPY deploy/Caddyfile /etc/caddy/Caddyfile"]
+    assert not any(line.upper().startswith("RUN ") for line in instructions)
     assert "web" not in dockerfile.casefold()
 
 
