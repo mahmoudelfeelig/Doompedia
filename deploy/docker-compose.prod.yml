@@ -10,9 +10,18 @@ services:
     expose:
       - "${DOOMPEDIA_INTERNAL_PORT:-8080}"
     volumes:
-      - ../web:/srv:ro
+      - type: bind
+        source: "${DOOMPEDIA_CONTENT_DIR:?DOOMPEDIA_CONTENT_DIR must reference a verified content tree}"
+        target: /srv
+        read_only: true
+        bind:
+          create_host_path: false
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
     read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     tmpfs:
       - /tmp:size=32m,mode=1777
       - /config:size=16m,mode=0755

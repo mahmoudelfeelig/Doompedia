@@ -11,11 +11,16 @@ on:
       - "ios-app/**"
       - ".github/workflows/ios-build.yml"
 
+permissions:
+  contents: read
+
 jobs:
   ios-simulator-build:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
       - name: Install XcodeGen
         run: brew install xcodegen
       - name: Generate Xcode project
@@ -59,7 +64,7 @@ jobs:
           test -n "$APP_PATH"
           ditto -c -k --keepParent "$APP_PATH" doompedia-ios-simulator-debug.zip
       - name: Upload iOS simulator artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: doompedia-ios-simulator-debug
           path: ios-app/doompedia-ios-simulator-debug.zip

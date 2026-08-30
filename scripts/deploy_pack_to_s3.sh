@@ -85,7 +85,7 @@ normalize_site_dir_for_cli() {
 
 SITE_DIR_FOR_CLI="$(normalize_site_dir_for_cli "$SITE_DIR")"
 
-sync_cmd=("${AWS_CLI_CMD[@]}" s3 sync "$SITE_DIR_FOR_CLI" "$TARGET" --delete --region "$AWS_REGION" --no-progress)
+sync_cmd=("${AWS_CLI_CMD[@]}" s3 sync "$SITE_DIR_FOR_CLI" "$TARGET" --region "$AWS_REGION" --no-progress)
 if [[ -n "$S3_ENDPOINT_URL" ]]; then
   sync_cmd+=(--endpoint-url "$S3_ENDPOINT_URL")
 fi

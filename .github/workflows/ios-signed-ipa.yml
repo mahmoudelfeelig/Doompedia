@@ -13,11 +13,16 @@ on:
           - ad-hoc
           - app-store
 
+permissions:
+  contents: read
+
 jobs:
   build-signed-ipa:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
 
       - name: Install XcodeGen
         run: brew install xcodegen
@@ -35,6 +40,7 @@ jobs:
           IOS_KEYCHAIN_PASSWORD: ${{ github.run_id }}-${{ github.run_attempt }}
         run: |
           set -euo pipefail
+          umask 077
           for secret_name in IOS_P12_BASE64 IOS_P12_PASSWORD IOS_PROVISIONING_PROFILE_BASE64 IOS_TEAM_ID; do
             if [ -z "${!secret_name:-}" ]; then
               echo "Missing required secret: $secret_name"
@@ -61,11 +67,15 @@ jobs:
           security cms -D -i "$PROFILE_PATH" > "$PROFILE_PLIST"
           PROFILE_UUID=$(/usr/libexec/PlistBuddy -c "Print UUID" "$PROFILE_PLIST")
           PROFILE_NAME=$(/usr/libexec/PlistBuddy -c "Print Name" "$PROFILE_PLIST")
+          if ! printf '%s' "$PROFILE_UUID" | grep -Eq '^[A-Za-z0-9-]+$'; then
+            echo "Provisioning profile contains an invalid UUID"
+            exit 1
+          fi
+          test -n "$PROFILE_NAME"
           cp "$PROFILE_PATH" "$HOME/Library/MobileDevice/Provisioning Profiles/$PROFILE_UUID.mobileprovision"
 
-          echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
-          echo "IOS_KEYCHAIN_PASSWORD=$IOS_KEYCHAIN_PASSWORD" >> "$GITHUB_ENV"
-          echo "PROFILE_NAME=$PROFILE_NAME" >> "$GITHUB_ENV"
+          printf '%s' "$PROFILE_UUID" > "$RUNNER_TEMP/profile-uuid"
+          printf '%s' "$PROFILE_NAME" > "$RUNNER_TEMP/profile-name"
 
       - name: Archive signed iOS app
         working-directory: ios-app
@@ -75,6 +85,8 @@ jobs:
           IOS_BUNDLE_ID: ${{ secrets.IOS_BUNDLE_ID }}
         run: |
           set -euo pipefail
+          KEYCHAIN_PATH="$RUNNER_TEMP/build.keychain-db"
+          PROFILE_NAME="$(cat "$RUNNER_TEMP/profile-name")"
           SIGN_IDENTITY="${IOS_CODE_SIGN_IDENTITY:-Apple Distribution}"
           BUNDLE_ID="${IOS_BUNDLE_ID:-com.feelbachelor.doompedia.ios}"
 
@@ -99,6 +111,8 @@ jobs:
           IOS_BUNDLE_ID: ${{ secrets.IOS_BUNDLE_ID }}
         run: |
           set -euo pipefail
+          KEYCHAIN_PATH="$RUNNER_TEMP/build.keychain-db"
+          PROFILE_NAME="$(cat "$RUNNER_TEMP/profile-name")"
           BUNDLE_ID="${IOS_BUNDLE_ID:-com.feelbachelor.doompedia.ios}"
 
           cat > exportOptions.plist <<EOF
@@ -129,7 +143,7 @@ jobs:
             OTHER_CODE_SIGN_FLAGS="--keychain $KEYCHAIN_PATH"
 
       - name: Upload signed iOS artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: doompedia-ios-signed
           path: |
@@ -140,6 +154,20 @@ jobs:
         if: always()
         run: |
           set +e
+          KEYCHAIN_PATH="$RUNNER_TEMP/build.keychain-db"
           if [ -n "${KEYCHAIN_PATH:-}" ] && [ -f "$KEYCHAIN_PATH" ]; then
             security delete-keychain "$KEYCHAIN_PATH" || true
           fi
+          if [ -f "$RUNNER_TEMP/profile-uuid" ]; then
+            PROFILE_UUID="$(cat "$RUNNER_TEMP/profile-uuid")"
+            if printf '%s' "$PROFILE_UUID" | grep -Eq '^[A-Za-z0-9-]+$'; then
+              rm -f "$HOME/Library/MobileDevice/Provisioning Profiles/$PROFILE_UUID.mobileprovision"
+            fi
+          fi
+          rm -f \
+            "$RUNNER_TEMP/signing-cert.p12" \
+            "$RUNNER_TEMP/profile.mobileprovision" \
+            "$RUNNER_TEMP/profile.plist" \
+            "$RUNNER_TEMP/profile-name" \
+            "$RUNNER_TEMP/profile-uuid" \
+            "$GITHUB_WORKSPACE/ios-app/exportOptions.plist"

@@ -9,18 +9,12 @@ The manifest is the "table of contents" for your pack. It tells the app:
 - checksum/hash for each shard
 - optional delta patch info
 
-## Recommended target: Hetzner + Caddy
-Use Hetzner as a static host for both the website and pack files:
+## Production target contract
 
-```text
-/opt/doompedia/web/
-  index.html
-  styles.css
-  assets/
-  packs/
-    en-core-1m/v1/manifest.json
-    en-core-1m/v1/shards/*
-```
+The authoritative hosted website and pack tree is state, not a build artifact.
+Repository code releases cannot write it. Production promotion requires a new
+versioned candidate tree, an exact manifest, a content-addressed archive, an
+isolated restore, and attended verification before any route change.
 
 The Android defaults expect:
 
@@ -28,16 +22,15 @@ The Android defaults expect:
 https://doompedia.elfeel.me/packs/en-core-1m/v1/manifest.json
 ```
 
-Publish locally, then sync to the server:
+Publish locally to prepare a candidate:
 
 ```bash
 BASE_URL="https://doompedia.elfeel.me/packs/en-core-1m/v1" ./scripts/publish_pack.sh
 
-rsync -av --delete web/ user@server:/opt/doompedia/web/
-rsync -av --delete data/site/packs/ user@server:/opt/doompedia/web/packs/
 ```
 
-Use `deploy/Caddyfile` as the starting point for the host Caddy config.
+Do not synchronize this candidate directly onto the authoritative production
+tree and never use a delete-mirroring command for code deployment.
 
 ## 1) Build packs locally
 
@@ -149,7 +142,6 @@ R2_PREFIX="" \
 Equivalent raw AWS CLI form (same result):
 ```bash
 aws s3 sync data/site s3://doompedia-packs \
-  --delete \
   --region auto \
   --endpoint-url https://<your_cloudflare_account_id>.r2.cloudflarestorage.com
 ```
@@ -158,7 +150,7 @@ PowerShell equivalent:
 ```powershell
 $env:AWS_ACCESS_KEY_ID = "<R2_ACCESS_KEY_ID>"
 $env:AWS_SECRET_ACCESS_KEY = "<R2_SECRET_ACCESS_KEY>"
-aws s3 sync .\data\site s3://doompedia-packs --delete --region auto --endpoint-url https://<your_cloudflare_account_id>.r2.cloudflarestorage.com
+aws s3 sync .\data\site s3://doompedia-packs --region auto --endpoint-url https://<your_cloudflare_account_id>.r2.cloudflarestorage.com
 ```
 
 Then map your domain to the R2 public/custom domain endpoint in Cloudflare and ensure HTTPS is enabled.

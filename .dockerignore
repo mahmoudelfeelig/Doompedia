@@ -1,0 +1,4 @@
+**
+!deploy/
+!deploy/Dockerfile
+!deploy/Caddyfile
