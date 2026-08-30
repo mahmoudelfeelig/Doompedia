@@ -5,7 +5,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
-GATEWAY_SHA = "c6079616813545bb0c0da1f649e04de6d89dc366"
+GATEWAY_SHA = "c6a718e860991fbed89c0f6207a527eb285aad81"
 
 
 def test_code_release_build_context_cannot_include_the_content_tree() -> None:
