@@ -27,6 +27,49 @@ jobs:
         working-directory: data-pipeline
         run: PYTHONPATH=src pytest -q
 
+  hardened-web-runtime:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Build canonical web image
+        run: docker build --file deploy/Dockerfile --tag doompedia-web:ci .
+      - name: Verify hardened runtime
+        run: |
+          set -euo pipefail
+          cleanup() {
+            docker rm --force doompedia-web-ci >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          docker run --detach \
+            --name doompedia-web-ci \
+            --init \
+            --read-only \
+            --tmpfs /config:rw,noexec,nosuid,nodev,size=16m,mode=0700 \
+            --tmpfs /data:rw,noexec,nosuid,nodev,size=16m,mode=0700 \
+            --tmpfs /tmp:rw,noexec,nosuid,nodev,size=32m,mode=1777 \
+            --security-opt no-new-privileges:true \
+            --cap-drop ALL \
+            --pids-limit 128 \
+            --memory 256m \
+            --mount type=bind,src="$PWD/web",dst=/srv,readonly \
+            --publish 127.0.0.1:18080:8080 \
+            doompedia-web:ci
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent --show-error \
+              http://127.0.0.1:18080/index.html >/dev/null; then
+              exit 0
+            fi
+            if [ "$(docker inspect --format '{{.State.Status}}' doompedia-web-ci)" != running ]; then
+              docker logs doompedia-web-ci
+              exit 1
+            fi
+            sleep 1
+          done
+          docker logs doompedia-web-ci
+          exit 1
+
   android-unit:
     runs-on: ubuntu-latest
     steps:
