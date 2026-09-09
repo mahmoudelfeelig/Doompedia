@@ -4,3 +4,5 @@ RUN setcap -r /usr/bin/caddy \
     && test -z "$(getcap /usr/bin/caddy)"
 
 COPY deploy/Caddyfile /etc/caddy/Caddyfile
+
+USER caddy
