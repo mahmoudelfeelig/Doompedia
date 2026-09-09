@@ -24,8 +24,8 @@ services:
       - no-new-privileges:true
     tmpfs:
       - /tmp:size=32m,mode=1777
-      - /config:size=16m,mode=0700,uid=1000,gid=1000
-      - /data:size=16m,mode=0700,uid=1000,gid=1000
+      - /config:size=16m,mode=0700,uid=10001,gid=10001
+      - /data:size=16m,mode=0700,uid=10001,gid=10001
     pids_limit: 128
     mem_limit: "${DOOMPEDIA_MEMORY_LIMIT:-256m}"
     logging:

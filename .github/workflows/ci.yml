@@ -46,8 +46,8 @@ jobs:
             --name doompedia-web-ci \
             --init \
             --read-only \
-            --tmpfs /config:rw,noexec,nosuid,nodev,size=16m,mode=0700 \
-            --tmpfs /data:rw,noexec,nosuid,nodev,size=16m,mode=0700 \
+            --tmpfs /config:rw,noexec,nosuid,nodev,size=16m,mode=0700,uid=10001,gid=10001 \
+            --tmpfs /data:rw,noexec,nosuid,nodev,size=16m,mode=0700,uid=10001,gid=10001 \
             --tmpfs /tmp:rw,noexec,nosuid,nodev,size=32m,mode=1777 \
             --security-opt no-new-privileges:true \
             --cap-drop ALL \
