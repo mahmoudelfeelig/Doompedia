@@ -8,7 +8,7 @@ ROOT = Path(__file__).resolve().parents[2]
 GATEWAY_SHA = "f6319b2dbaf4c1f10230c6425967f34553acd61d"
 
 
-def test_code_release_build_context_cannot_include_the_content_tree() -> None:
+def test_code_release_build_context_allows_only_brand_files_from_content_tree() -> None:
     dockerignore = (ROOT / ".dockerignore").read_text(encoding="utf-8")
     ignore_rules = [
         line.strip()
@@ -20,10 +20,15 @@ def test_code_release_build_context_cannot_include_the_content_tree() -> None:
         "!deploy/",
         "!deploy/Dockerfile",
         "!deploy/Caddyfile",
+        "!web/",
+        "web/**",
+        "!web/assets/",
+        "!web/assets/elephant-logo.png",
+        "!web/assets/favicon.ico",
     ]
 
 
-def test_code_release_image_cannot_bake_the_authoritative_content_tree() -> None:
+def test_code_release_image_bakes_only_the_two_brand_assets() -> None:
     dockerfile = (ROOT / "deploy" / "Dockerfile").read_text(encoding="utf-8")
     instructions = [
         line.strip()
@@ -43,13 +48,17 @@ def test_code_release_image_cannot_bake_the_authoritative_content_tree() -> None
         "&& addgroup -S -g 10001 doompedia \\",
         "&& adduser -S -D -H -u 10001 -G doompedia doompedia",
         "COPY deploy/Caddyfile /etc/caddy/Caddyfile",
+        "COPY web/assets/elephant-logo.png web/assets/favicon.ico /brand/assets/",
         "USER doompedia",
     ]
-    assert copy_or_add == ["COPY deploy/Caddyfile /etc/caddy/Caddyfile"]
+    assert copy_or_add == [
+        "COPY deploy/Caddyfile /etc/caddy/Caddyfile",
+        "COPY web/assets/elephant-logo.png web/assets/favicon.ico /brand/assets/",
+    ]
     assert [line for line in instructions if line.upper().startswith("RUN ")] == [
         "RUN setcap -r /usr/bin/caddy \\",
     ]
-    assert "web" not in dockerfile.casefold()
+    assert "COPY web /srv" not in dockerfile
 
 
 def test_local_runtime_contract_cannot_write_the_content_mount() -> None:

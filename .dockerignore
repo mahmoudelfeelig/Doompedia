@@ -2,3 +2,8 @@
 !deploy/
 !deploy/Dockerfile
 !deploy/Caddyfile
+!web/
+web/**
+!web/assets/
+!web/assets/elephant-logo.png
+!web/assets/favicon.ico
