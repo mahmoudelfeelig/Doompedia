@@ -31,6 +31,14 @@
 	header /app.js Cache-Control "public, max-age=300, must-revalidate"
 	header /styles.css Cache-Control "public, max-age=300, must-revalidate"
 
-	try_files {path} /index.html
-	file_server
+	@brandAssets path /assets/elephant-logo.png /assets/favicon.ico
+	handle @brandAssets {
+		root * /brand
+		file_server
+	}
+
+	handle {
+		try_files {path} /index.html
+		file_server
+	}
 }

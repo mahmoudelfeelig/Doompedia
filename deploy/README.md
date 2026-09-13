@@ -5,6 +5,11 @@ not copy, synchronize, prune, replace, or otherwise mutate the authoritative
 production content tree. The private controller mounts that already-verified
 tree read-only into the static runtime.
 
+The immutable runtime image owns the logo and favicon routes. Those two brand
+files are copied from `web/assets` during the image build and take precedence
+over the read-only content mount, so brand-only releases do not mutate or
+rearchive the authoritative tree.
+
 Publish data locally first:
 
 ```bash

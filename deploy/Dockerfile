@@ -6,5 +6,6 @@ RUN setcap -r /usr/bin/caddy \
     && adduser -S -D -H -u 10001 -G doompedia doompedia
 
 COPY deploy/Caddyfile /etc/caddy/Caddyfile
+COPY web/assets/elephant-logo.png web/assets/favicon.ico /brand/assets/
 
 USER doompedia
